@@ -1,45 +1,63 @@
 <?php
-
+// ==========================
 // Affichage des erreurs PHP pour le développement
+// ==========================
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
+// ==========================
 // Connexion à la base de données avec PDO (MySQL)
+// ==========================
 try {
     $pdo = new PDO('mysql:host=localhost;dbname=invader', 'root', 'root');
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 } catch (PDOException $e) {
+    // Affiche un message d'erreur si la connexion échoue
     die("Erreur de connexion : " . $e->getMessage());
 }
 
+// ==========================
 // Définition des colonnes triables/filtrables
+// ==========================
 $colonnes_tri = [
     'Nom' => 'p.Nom',
     'categorie' => 'c.nom_categorie',
     'etat' => 'p.etat'
 ];
 
+// ==========================
 // Récupération de la colonne filtrée (si présente dans l'URL)
+// ==========================
 $filtre_colonne = isset($_GET['filtre_colonne']) && array_key_exists($_GET['filtre_colonne'], $colonnes_tri) ? $_GET['filtre_colonne'] : null;
 
+// ==========================
 // Récupération de la valeur du filtre (si présente dans l'URL)
+// ==========================
 $filtre_valeur = isset($_GET['filtre_valeur']) ? $_GET['filtre_valeur'] : null;
 
+// ==========================
 // Définition du tri par défaut ou selon l'URL
+// ==========================
 $tri = isset($_GET['tri']) && array_key_exists($_GET['tri'], $colonnes_tri) ? $_GET['tri'] : 'Nom';
 $sens = (isset($_GET['sens']) && $_GET['sens'] === 'desc') ? 'desc' : 'asc';
 $colonne_sql = $colonnes_tri[$tri];
 
+// ==========================
 // Récupération des listes pour les filtres (catégories, fournisseurs, noms produits, états)
+// ==========================
 $categories = $pdo->query("SELECT * FROM Categories")->fetchAll(PDO::FETCH_ASSOC);
 $fournisseurs = $pdo->query("SELECT * FROM Fournisseurs")->fetchAll(PDO::FETCH_ASSOC);
 $noms_produits = $pdo->query("SELECT DISTINCT Nom FROM Produits ORDER BY Nom ASC")->fetchAll(PDO::FETCH_COLUMN);
 $etats = ['satisfaisant', 'intermediaire', 'critique'];
 
+// ==========================
 // Construction dynamique de la requête SQL selon le filtre ou le tri
-$where = [];
-$params = [];
+// ==========================
+$where = []; // Tableau pour stocker les conditions WHERE
+$params = []; // Tableau pour stocker les valeurs des paramètres préparés
+
+// Ajout des conditions de filtre si besoin
 if ($filtre_colonne && $filtre_valeur !== null && $filtre_valeur !== '') {
     if ($filtre_colonne === 'Nom') {
         $where[] = 'p.Nom = ?';
@@ -52,6 +70,8 @@ if ($filtre_colonne && $filtre_valeur !== null && $filtre_valeur !== '') {
         $params[] = $filtre_valeur;
     }
 }
+
+// Construction de la requête SQL principale
 $sql = "
     SELECT p.id_produit, p.Nom, c.nom_categorie, c.id_categorie, p.Idf, p.etat, p.seuil_critique, p.stock_max, p.conditionnement, p.stock_actuel
     FROM Produits p
@@ -61,12 +81,17 @@ if ($where) {
     $sql .= " WHERE " . implode(' AND ', $where);
 }
 $sql .= " ORDER BY $colonne_sql $sens";
+
+// Préparation et exécution de la requête SQL
 $query = $pdo->prepare($sql);
 $query->execute($params);
 $produits = $query->fetchAll(PDO::FETCH_ASSOC);
 
+// ==========================
 // Traitement du formulaire d'ajout de produit
+// ==========================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajouter_produit'])) {
+    // Récupération des champs du formulaire
     $nom = $_POST['nom'];
     $categorie = $_POST['categorie'];
     $fournisseur = $_POST['fournisseur'];
@@ -89,21 +114,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajouter_produit'])) {
             $etat = 'intermediaire';
         }
         try {
+            // Insertion du nouveau produit dans la base de données
             $stmt = $pdo->prepare("INSERT INTO Produits (Nom, id_categorie, Idf, conditionnement, seuil_critique, stock_max, etat, stock_actuel) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
             $stmt->execute([$nom, $categorie, $fournisseur, $conditionnement, $seuil_critique, $stock_max, $etat, $stock_initial]);
-            header('Location: produits.php');
+            header('Location: produits.php'); // Redirection après ajout
             exit;
         } catch (PDOException $e) {
+            // Gestion des erreurs d'insertion
             $erreur_ajout = "Erreur lors de l'ajout : " . $e->getMessage();
             $_GET['add'] = 1;
         }
     } else {
+        // Message d'erreur si un champ est vide
         $erreur_ajout = "Tous les champs sont obligatoires.";
         $_GET['add'] = 1;
     }
 }
 
+// ==========================
 // Traitement du formulaire de modification ou suppression d'un produit
+// ==========================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['id_produit'])) {
     if (isset($_POST['supprimer'])) {
         // Suppression du produit
@@ -133,7 +163,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['id_produit'])) {
     }
 }
 
+// ==========================
 // Si un produit est sélectionné pour édition (via ?edit=ID), on récupère ses infos pour pré-remplir la modale
+// ==========================
 $produit_edit = null;
 if (isset($_GET['edit'])) {
     $stmt = $pdo->prepare("SELECT * FROM Produits WHERE id_produit = ?");
@@ -229,7 +261,9 @@ if (isset($_GET['edit'])) {
     </style>
 </head>
 <body>
-    <!-- Barre de navigation Bootstrap -->
+    <!-- ==========================
+         Barre de navigation Bootstrap
+         ========================== -->
     <nav class="navbar navbar-expand-lg bg-light shadow-sm mb-4">
         <div class="container-fluid">
             <span class="logo me-4">INVADER</span>
@@ -247,12 +281,16 @@ if (isset($_GET['edit'])) {
         </div>
     </nav>
     <main class="container">
-        <!-- En-tête de la page et bouton d'ajout -->
+        <!-- ==========================
+             En-tête de la page et bouton d'ajout
+             ========================== -->
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <h2 class="fw-bold mb-0">Produits</h2>
             <a href="produits.php?add=1" class="btn btn-dark btn-ajouter">+ ajouter un produit</a>
         </div>
-        <!-- Tableau des produits -->
+        <!-- ==========================
+             Tableau des produits
+             ========================== -->
         <div class="table-responsive">
             <table class="table table-bordered align-middle">
                 <thead>
@@ -353,7 +391,9 @@ if (isset($_GET['edit'])) {
         </div>
     </main>
 
-    <!-- Modale d'ajout de produit (affichée si ?add=1 dans l'URL) -->
+    <!-- ==========================
+         Modale d'ajout de produit (affichée si ?add=1 dans l'URL)
+         ========================== -->
     <?php if (isset($_GET['add'])): ?>
     <div class="modal fade show" style="display:block; background:rgba(0,0,0,0.35);" tabindex="-1">
         <div class="modal-dialog">
@@ -417,7 +457,9 @@ if (isset($_GET['edit'])) {
     </div>
     <?php endif; ?>
 
-    <!-- Modale d'édition de produit (affichée si ?edit=ID dans l'URL) -->
+    <!-- ==========================
+         Modale d'édition de produit (affichée si ?edit=ID dans l'URL)
+         ========================== -->
     <?php if ($produit_edit): ?>
         <div class="modal fade show" style="display:block; background:rgba(0,0,0,0.35);" tabindex="-1">
             <div class="modal-dialog">
